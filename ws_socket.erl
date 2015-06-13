@@ -46,6 +46,14 @@ recv(Socket) ->
           Message = decode(Key, Payload),
           io:format("~p~n", [Message]),
           send(Socket, Message);
+        <<Fin:1, _:3, Opcode:4, Mask:1, PayloadLen:7, Len:32/integer, Key:4/binary, Payload/binary>> when PayloadLen =:= 126 ->
+          Message = decode(Key, Payload),
+          io:format("~p~n", [Message]),
+          send(Socket, Message);
+        <<Fin:1, _:3, Opcode:4, Mask:1, PayloadLen:7, Len:64/integer, Key:4/binary, Payload/binary>> when PayloadLen =:= 127 ->
+          Message = decode(Key, Payload),
+          io:format("~p~n", [Message]),
+          send(Socket, Message);
         _ ->
           io:format("Bad format~n")
       end
