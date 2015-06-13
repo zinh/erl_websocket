@@ -13,7 +13,7 @@ start_link(Port) ->
 
 acceptor(LSock) ->
   {ok, Socket} = gen_tcp:accept(LSock),
-  spawn(fun() -> acceptor(LSock) end),
+  % spawn(fun() -> acceptor(LSock) end),
   handle(Socket).
 
 handle(Socket) ->
@@ -42,29 +42,37 @@ recv(Socket) ->
   receive
     {tcp, Socket, Frame} ->
       case Frame of
-        <<Fin:1, _:3, Opcode:4, Mask:1, PayloadLen:7, Key:32, Payload/binary>> when PayloadLen < 126 ->
+        <<Fin:1, _:3, Opcode:4, Mask:1, PayloadLen:7, Key:4/binary, Payload/binary>> when PayloadLen < 126 ->
           Message = decode(Key, Payload),
-          io:format("~p~n", [Message]);
+          io:format("~p~n", [Message]),
+          send(Socket, Message);
         _ ->
           io:format("Bad format~n")
       end
-  end.
+  end,
+  recv(Socket).
+
+send(Socket, Msg) ->
+  Len = byte_size(Msg),
+  Frame = [<<129, Len>>, Msg],
+  gen_tcp:send(Socket, Frame).
 
 decode(Key, Data) when is_binary(Key) ->
   io:format("Key: ~s~n", [Key]),
-  Keys = bin_to_list(Key, 8),
+  Keys = bin_to_list(Key, 1),
   decode(Keys, Data);
 
 decode(Keys, Data) when is_list(Keys) ->
   decode(Keys, Data, []).
 
 decode([H | T], Data, DecodedData) ->
+  io:format("H: ~s~n", [H]),
+  io:format("Decoded: ~s~n", [DecodedData]),
   case Data of
-    <<D:8, Rest/binary>> -> 
-      DecodedData ++ [D bxor H],
-      decode(T ++ H, Rest, DecodedData);
+    <<D:1/binary, Rest/binary>> -> 
+      decode(T ++ [H], Rest, DecodedData ++ [crypto:exor(H, D)]);
     _ ->
-      DecodedData
+      binary:list_to_bin(DecodedData)
   end.
 
 
@@ -74,7 +82,7 @@ bin_to_list(Data, Bitlen) ->
 bin_to_list(Data, Bitlen, List) ->
   case Data of
     <<T:Bitlen/binary, Rest/binary>> ->
-      bin_to_list(Rest, Bitlen, List ++ T);
+      bin_to_list(Rest, Bitlen, List ++ [T]);
     _ ->
       List
   end.
