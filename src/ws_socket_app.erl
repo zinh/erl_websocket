@@ -7,14 +7,17 @@
 
 -define(DEFAULT_PORT, 8080).
 
+-record(state, {lsock}).
+
 %% ===================================================================
 %% Application callbacks
 %% ===================================================================
 
 start(_StartType, _StartArgs) ->
-  io:format("Start socket~n"),
   {ok, LSock} = gen_tcp:listen(?DEFAULT_PORT, [binary, {active, true}]),
-  ws_socket_sup:start_link(LSock).
+  {ok, Pid} = ws_socket_sup:start_link(LSock),
+  {ok, Pid, #state{lsock = LSock}}.
 
-stop(_State) ->
+stop(#state{lsock = LSock}) ->
+  gen_tcp:stop(LSock),
   ok.
