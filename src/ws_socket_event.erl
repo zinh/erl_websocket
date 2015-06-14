@@ -1,60 +1,69 @@
 -module(ws_socket_event).
 -behaviour(gen_server).
--export([]).
--record(state, {lsock}).
+-export([start_link/1]).
+-export([init/1, handle_call/3, handle_cast/2, handle_info/2, code_change/3, terminate/2]).
+-record(state, {lsock, phase=handshake}).
+-define(MAGIC_STRING, "258EAFA5-E914-47DA-95CA-C5AB0DC85B11").
 
-%% Callback
+%% API
 start_link(LSock) ->
-  gen_server:start_link(?MODULE, [LSock]).
+  gen_server:start_link(?MODULE, [LSock], []).
 
+%% gen_server's callback
 init([LSock]) ->
   {ok, #state{lsock = LSock}, 0}.
+
+handle_call(_Msg, _From, State) ->
+  {noreply, State}.
+
+handle_cast(_Msg, State) ->
+  {noreply, State}.
 
 handle_info(timeout, #state{lsock = LSock} = State) ->
   {ok, _Sock} = gen_tcp:accept(LSock),
   ws_socket_sup:start_child(),
+  {noreply, State};
+
+% Handshake
+handle_info({tcp, Socket, Data}, #state{phase = handshake} = State) ->
+  handshake(Socket, Data),
+  {noreply, State#state{phase = handshaked}};
+
+handle_info({tcp, Socket, Frame}, #state{phase = handshaked} = State) ->
+  Msg = parse_frame(Frame),
+  send(Socket, Msg),
   {noreply, State}.
 
-%% Private funtions
-handshake(Socket) ->
-  inet:setopts(Socket, [{active, once}]),
-  receive
-    {tcp, Socket, Packet} ->
-      Headers = get_path(Packet),
-      Key = proplists:get_value("Sec-Websocket-Key", Headers),
-      AcceptKey = websocket_key(Key),
-      Data = [<<"HTTP/1.1 101 Switching Protocols\r\n",
-        "Upgrade: websocket\r\n",
-        "Connection: Upgrade\r\n",
-        "Sec-WebSocket-Accept: ">>,
-        AcceptKey,
-        <<"\r\n\r\n">>],
-      io:format("~s~n", [Data]),
-      gen_tcp:send(Socket, Data)
-  end.
+terminate(_Reason, _State) ->
+  ok.
 
-recv(Socket) ->
-  inet:setopts(Socket, [{active, once}]),
-  receive
-    {tcp, Socket, Frame} ->
-      case Frame of
-        <<Fin:1, _:3, Opcode:4, Mask:1, PayloadLen:7, Key:4/binary, Payload/binary>> when PayloadLen < 126 ->
-          Message = decode(Key, Payload),
-          io:format("~p~n", [Message]),
-          send(Socket, Message);
-        <<Fin:1, _:3, Opcode:4, Mask:1, PayloadLen:7, Len:32/integer, Key:4/binary, Payload/binary>> when PayloadLen =:= 126 ->
-          Message = decode(Key, Payload),
-          io:format("~p~n", [Message]),
-          send(Socket, Message);
-        <<Fin:1, _:3, Opcode:4, Mask:1, PayloadLen:7, Len:64/integer, Key:4/binary, Payload/binary>> when PayloadLen =:= 127 ->
-          Message = decode(Key, Payload),
-          io:format("~p~n", [Message]),
-          send(Socket, Message);
-        _ ->
-          io:format("Bad format~n")
-      end
-  end,
-  recv(Socket).
+code_change(_OldVsn, State, _Extra) ->
+  {ok, State}.
+
+%% Private funtions
+handshake(Socket, Packet) ->
+  Headers = get_path(Packet),
+  Key = proplists:get_value("Sec-Websocket-Key", Headers),
+  AcceptKey = websocket_key(Key),
+  Data = [<<"HTTP/1.1 101 Switching Protocols\r\n",
+    "Upgrade: websocket\r\n",
+    "Connection: Upgrade\r\n",
+    "Sec-WebSocket-Accept: ">>,
+    AcceptKey,
+    <<"\r\n\r\n">>],
+  gen_tcp:send(Socket, Data).
+
+parse_frame(Frame) ->
+  case Frame of
+    <<_Fin:1, _:3, _Opcode:4, _Mask:1, PayloadLen:7, Key:4/binary, Payload/binary>> when PayloadLen < 126 ->
+      decode(Key, Payload);
+    <<_Fin:1, _:3, _Opcode:4, _Mask:1, PayloadLen:7, _Len:32/integer, Key:4/binary, Payload/binary>> when PayloadLen =:= 126 ->
+      decode(Key, Payload);
+    <<_Fin:1, _:3, _Opcode:4, _Mask:1, PayloadLen:7, _Len:64/integer, Key:4/binary, Payload/binary>> when PayloadLen =:= 127 ->
+      decode(Key, Payload);
+    _ ->
+      {error, bad_format}
+  end.
 
 send(Socket, Msg) ->
   Len = byte_size(Msg),
@@ -62,7 +71,6 @@ send(Socket, Msg) ->
   gen_tcp:send(Socket, Frame).
 
 decode(Key, Data) when is_binary(Key) ->
-  io:format("Key: ~s~n", [Key]),
   Keys = bin_to_list(Key, 1),
   decode(Keys, Data);
 
@@ -70,8 +78,6 @@ decode(Keys, Data) when is_list(Keys) ->
   decode(Keys, Data, []).
 
 decode([H | T], Data, DecodedData) ->
-  io:format("H: ~s~n", [H]),
-  io:format("Decoded: ~s~n", [DecodedData]),
   case Data of
     <<D:1/binary, Rest/binary>> -> 
       decode(T ++ [H], Rest, DecodedData ++ [crypto:exor(H, D)]);
@@ -91,9 +97,8 @@ bin_to_list(Data, Bitlen, List) ->
       List
   end.
 
-% private
 get_path(Packet) ->
-  {ok, {http_request, _, {abs_path, Path}, _}, Rest} = erlang:decode_packet(http, Packet, []),
+  {ok, {http_request, _, {abs_path, _Path}, _}, Rest} = erlang:decode_packet(http, Packet, []),
   parse_header(Rest).
 
 parse_header(Packet) ->

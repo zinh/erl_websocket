@@ -12,6 +12,7 @@
 %% ===================================================================
 
 start(_StartType, _StartArgs) ->
+  io:format("Start socket~n"),
   {ok, LSock} = gen_tcp:listen(?DEFAULT_PORT, [binary, {active, true}]),
   ws_socket_sup:start_link(LSock).
 
