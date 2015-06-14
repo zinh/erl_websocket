@@ -1,25 +1,21 @@
--module(ws_socket).
--compile(export_all).
--define(MAGIC_STRING, "258EAFA5-E914-47DA-95CA-C5AB0DC85B11").
+-module(ws_socket_event).
+-behaviour(gen_server).
+-export([]).
+-record(state, {lsock}).
 
-start_link(Port) ->
-  Pid = spawn(fun() -> 
-        {ok, LSock} = gen_tcp:listen(Port, [binary, {active, false}]),
-        spawn(fun() -> acceptor(LSock) end),
-        timer:sleep(infinity)
-    end),
-  {ok, Pid}.
+%% Callback
+start_link(LSock) ->
+  gen_server:start_link(?MODULE, [LSock]).
 
+init([LSock]) ->
+  {ok, #state{lsock = LSock}, 0}.
 
-acceptor(LSock) ->
-  {ok, Socket} = gen_tcp:accept(LSock),
-  % spawn(fun() -> acceptor(LSock) end),
-  handle(Socket).
+handle_info(timeout, #state{lsock = LSock} = State) ->
+  {ok, _Sock} = gen_tcp:accept(LSock),
+  ws_socket_sup:start_child(),
+  {noreply, State}.
 
-handle(Socket) ->
-  handshake(Socket),
-  recv(Socket).
-
+%% Private funtions
 handshake(Socket) ->
   inet:setopts(Socket, [{active, once}]),
   receive
