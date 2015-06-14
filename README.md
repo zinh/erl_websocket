@@ -4,5 +4,5 @@ A Websocket server from scratch in Erlang
 ### Todo
 
   - [X] Ping server
-  - [ ] OTP
+  - [X] OTP
   - [ ] Web interface
