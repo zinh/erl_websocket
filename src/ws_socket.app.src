@@ -8,5 +8,5 @@
                   stdlib
                  ]},
   {mod, { ws_socket_app, []}},
-  {env, []}
+  {env, [{port, 8080}]}
  ]}.

@@ -14,7 +14,11 @@
 %% ===================================================================
 
 start(_StartType, _StartArgs) ->
-  {ok, LSock} = gen_tcp:listen(?DEFAULT_PORT, [binary, {active, true}]),
+  Port = case application:get_env(ws_socket, port) of
+    {ok, P} -> P;
+    undefined -> ?DEFAULT_PORT
+  end,
+  {ok, LSock} = gen_tcp:listen(Port, [binary, {active, true}]),
   {ok, Pid} = ws_socket_sup:start_link(LSock),
   {ok, Pid, #state{lsock = LSock}}.
 
