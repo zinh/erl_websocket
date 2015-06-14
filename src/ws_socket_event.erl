@@ -42,7 +42,7 @@ code_change(_OldVsn, State, _Extra) ->
 
 %% Private funtions
 handshake(Socket, Packet) ->
-  Headers = get_path(Packet),
+  {_Path, Headers} = get_path(Packet),
   Key = proplists:get_value("Sec-Websocket-Key", Headers),
   AcceptKey = websocket_key(Key),
   Data = [<<"HTTP/1.1 101 Switching Protocols\r\n",
@@ -61,7 +61,7 @@ parse_frame(Frame) ->
       decode(Key, Payload);
     <<_Fin:1, _:3, _Opcode:4, _Mask:1, PayloadLen:7, _Len:64/integer, Key:4/binary, Payload/binary>> when PayloadLen =:= 127 ->
       decode(Key, Payload);
-    _ ->
+    _Other ->
       {error, bad_format}
   end.
 
@@ -98,8 +98,9 @@ bin_to_list(Data, Bitlen, List) ->
   end.
 
 get_path(Packet) ->
-  {ok, {http_request, _, {abs_path, _Path}, _}, Rest} = erlang:decode_packet(http, Packet, []),
-  parse_header(Rest).
+  {ok, {http_request, _, {abs_path, Path}, _}, Rest} = erlang:decode_packet(http, Packet, []),
+  Headers = parse_header(Rest),
+  {Path, Headers}.
 
 parse_header(Packet) ->
   parse_header(Packet, []).
