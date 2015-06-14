@@ -1,0 +1,12 @@
+{application, ws_socket,
+ [
+  {description, ""},
+  {vsn, "1"},
+  {registered, []},
+  {applications, [
+                  kernel,
+                  stdlib
+                 ]},
+  {mod, { ws_socket_app, []}},
+  {env, []}
+ ]}.
