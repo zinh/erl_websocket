@@ -5,8 +5,10 @@
   {registered, []},
   {applications, [
                   kernel,
-                  stdlib
+                  stdlib,
+                  gproc
                  ]},
   {mod, { ws_socket_app, []}},
-  {env, [{port, 8080}]}
+  {env, [{port, 8080}]},
+  {modules, []}
  ]}.

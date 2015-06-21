@@ -1,7 +1,10 @@
 compile:
-	./rebar compile
+	./rebar3 do compile
 
 run:
-	erl -pa ebin
+	./rebar3 do shell
+
+clean:
+	./rebar3 clean
 
 all: compile run

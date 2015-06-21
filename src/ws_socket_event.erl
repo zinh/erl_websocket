@@ -2,8 +2,9 @@
 -behaviour(gen_server).
 -export([start_link/1]).
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2, code_change/3, terminate/2]).
--record(state, {lsock, phase=handshake}).
+-record(state, {lsock, socket, phase=handshake}).
 -define(MAGIC_STRING, "258EAFA5-E914-47DA-95CA-C5AB0DC85B11").
+-define(WSKey, {pubsub,wsbroadcast}).
 
 %% API
 start_link(LSock) ->
@@ -20,17 +21,22 @@ handle_cast(_Msg, State) ->
   {noreply, State}.
 
 handle_info(timeout, #state{lsock = LSock} = State) ->
-  {ok, _Sock} = gen_tcp:accept(LSock),
+  {ok, Socket} = gen_tcp:accept(LSock),
   ws_socket_sup:start_child(),
-  {noreply, State};
+  {noreply, State#state{socket = Socket}};
 
 % Handshake
 handle_info({tcp, Socket, Data}, #state{phase = handshake} = State) ->
   handshake(Socket, Data),
+  gproc:reg({p, l, ?WSKey}),
   {noreply, State#state{phase = handshaked}};
 
-handle_info({tcp, Socket, Frame}, #state{phase = handshaked} = State) ->
+handle_info({tcp, _Socket, Frame}, #state{phase = handshaked} = State) ->
   Msg = parse_frame(Frame),
+  broadcast(Msg),
+  {noreply, State};
+
+handle_info({_Pid, ?WSKey, Msg}, #state{phase = handshaked, socket = Socket} = State) ->
   send(Socket, Msg),
   {noreply, State}.
 
@@ -118,3 +124,6 @@ parse_header(Packet, Headers) ->
 websocket_key(Key) ->
   HashKey = crypto:hash(sha, Key ++ ?MAGIC_STRING),
   base64:encode(HashKey).
+
+broadcast(Msg) ->
+  gproc:send({p, l, ?WSKey}, {self(), ?WSKey, Msg}).
