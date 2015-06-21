@@ -36,11 +36,15 @@ handle_info({tcp, _Socket, Frame}, #state{phase = handshaked} = State) ->
   broadcast(Msg),
   {noreply, State};
 
+handle_info({tcp_closed, _Socket}, State) ->
+  {stop, client_closed, State};
+
 handle_info({_Pid, ?WSKey, Msg}, #state{phase = handshaked, socket = Socket} = State) ->
   send(Socket, Msg),
   {noreply, State}.
 
 terminate(_Reason, _State) ->
+  gproc:unreg({p, l, ?WSKey}),
   ok.
 
 code_change(_OldVsn, State, _Extra) ->
